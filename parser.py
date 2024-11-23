@@ -1,4 +1,3 @@
-# parser.py
 import re
 from typing import List, Union
 from expressions import *
@@ -14,7 +13,7 @@ class Parser:
     def tokenize(self, expression: str) -> List[str]:
         if re.search(r'\d', expression):
             raise ValueError("Ошибка: выражение содержит числа или цифры, что недопустимо.")
-        
+
         tokens = []
         for match in self.TOKEN_REGEX.finditer(expression):
             if match.group(1):
@@ -56,7 +55,7 @@ class Parser:
         if token is None:
             raise ValueError(f"Ожидался токен , но достигнут конец выражения")
         if expected and token != expected:
-            raise ValueError(f"Ожидался токен , на позиции {self.pos}")
+            raise ValueError(f"Ожидался токен {expected}, но был {token}")
         self.pos += 1
         return token
 
@@ -84,8 +83,7 @@ class Parser:
         token = self.current_token()
         if token == '!':
             self.consume_token('!')
-            operand = self.parse_negation()
-            return Negation(operand)
+            return Negation(self.parse_negation())
         else:
             return self.parse_parenthesized()
 
@@ -94,7 +92,7 @@ class Parser:
         while self.current_token() == '*':
             self.consume_token('*')
             right = self.parse_negation()
-            left = Conjunction(left, right)
+            left = Negation(Implication(left, Negation(right)))
         return left
 
     def parse_disjunction(self) -> Expression:
@@ -102,7 +100,8 @@ class Parser:
         while self.current_token() == '|':
             self.consume_token('|')
             right = self.parse_conjunction()
-            left = Disjunction(left, right)
+            # Дизъюнкция выражена как (!A > B)
+            left = Implication(Negation(left), right)
         return left
 
     def parse_xor(self) -> Expression:
@@ -110,7 +109,10 @@ class Parser:
         while self.current_token() == '+':
             self.consume_token('+')
             right = self.parse_disjunction()
-            left = ExclusiveOr(left, right)
+            left = Implication(
+                Implication(Negation(left), Negation(right)),
+                Negation(Implication(left, right))
+            )
         return left
 
     def parse_implication(self) -> Expression:
@@ -125,6 +127,9 @@ class Parser:
         left = self.parse_implication()
         while self.current_token() == '=':
             self.consume_token('=')
-            right = self.parse_equivalence()
-            left = Equivalence(left, right)
+            right = self.parse_implication()
+            left = Implication(
+                Implication(left, Negation(right)),
+                Negation(Implication(Negation(left), right))
+            )
         return left
